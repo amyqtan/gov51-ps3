@@ -138,7 +138,7 @@ a\) The in-sample RMSE is 0.461.
 
 b\) The out-of-sample RMSE is 0.462.
 
-c\) The gap is not large //appears not to be overfitting because of the small gap
+c\) The gap is not large //appears not to be over fitting because of the small gap
 
 ## Question 2.4
 
