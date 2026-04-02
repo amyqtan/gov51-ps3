@@ -7,7 +7,7 @@ editor: visual
 
 ## Github
 
-link
+Link: <https://github.com/amyqtan/gov51-ps3>
 
 ## Question 1.1
 
@@ -15,7 +15,7 @@ link
 library(tidyverse) 
 library(glmnet) 
 library(knitr) 
-compas <- read_csv("compas_clean.csv")
+compas <- read_csv("data/raw/compas_clean.csv")
 ```
 
 ## Question 1.2
@@ -120,18 +120,19 @@ b\) For a one unit increase in priors_count, on average, recidivism increases by
 ## Question 2.3
 
 ```{r}
-prediction_train <- predict(recidivism_all, newdata = train)
-prediction_test <- predict(recidivism_all, newdata = test)
+prediction_train_ols <- predict(recidivism_all, newdata = train)
+prediction_test_ols <- predict(recidivism_all, newdata = test)
 
 actual_train <- train$recidivism
 actual_test <- test$recidivism
 
 
-train_RMSE <- sqrt(mean((prediction_train - actual_train)^2))
-test_RMSE <- sqrt(mean((prediction_test - actual_test)^2))
+train_RMSE_ols <- sqrt(mean((actual_train - prediction_train_ols)^2))
+test_RMSE_ols <- sqrt(mean((actual_test - prediction_test_ols)^2))
 
-train_RMSE
-test_RMSE
+train_RMSE_ols
+test_RMSE_ols
+test_RMSE_ols - train_RMSE_ols
 ```
 
 a\) The in-sample RMSE is 0.461.
@@ -141,6 +142,202 @@ b\) The out-of-sample RMSE is 0.462.
 c\) The gap is not large //appears not to be over fitting because of the small gap
 
 ## Question 2.4
+
+```{r}
+set.seed(51)
+folds <- sample(rep(1:5, length.out = nrow(train)))
+
+rmse_cv <- numeric(5) 
+for (k in 1:5) { 
+  train_k <- train[folds != k, ] 
+  test_k <- train[folds == k, ] 
+  model_k <- lm(recidivism ~ ., data = train_k) 
+  pred_k <- predict(model_k, newdata = test_k) 
+  rmse_cv[k] <- sqrt(mean((test_k$recidivism- pred_k)^2)) 
+  } 
+
+mean(rmse_cv)
+```
+
+## Question 3.1
+
+```{r}
+f_full <- recidivism ~ (.)^2 + 
+  I(age^2) + I(priors_count^2) + 
+  I(juv_fel_count^2) + I(juv_misd_count^2) + 
+  I(juv_other_count^2)
+
+X_train <- model.matrix(f_full, data = train)[,-1] 
+X_test <- model.matrix(f_full, data = test)[,-1] 
+y_train <- train$recidivism 
+y_test <- test$recidivism
+
+ncol(X_train)
+nrow(X_train) 
+nrow(X_train) / ncol(X_train)
+```
+
+a\) The expanded model has 141 predictors.
+
+b\) The ratio of training observations to predictors is 40.9.
+
+## Question 3.2
+
+```{r}
+ols_full <- lm(f_full, data = train)
+
+prediction_train_ols_full <- predict(ols_full, newdata = train)
+prediction_test_ols_full <- predict(ols_full, newdata = test)
+
+
+train_RMSE_ols_full <- sqrt(mean((actual_train - prediction_train_ols_full)^2))
+test_RMSE_ols_full <- sqrt(mean((actual_test - prediction_test_ols_full)^2))
+
+train_RMSE_ols_full
+test_RMSE_ols_full
+test_RMSE_ols_full - train_RMSE_ols_full
+```
+
+a\) The in-sample RMSE is 0.4485.
+
+b\) The out-of-sample RMSE is 0.4890.
+
+c\) the gap is larger bc overfitting, fitting on noise
+
+## Question 3.3
+
+The in-sample RMSE is lower, showing how the new model fits better in-sample since the new model with 180 interaction terms is likely fitting on noise within the sample. However, the out-of-sample prediction worsens because there is overfitting occurring, where the model is fitting on high variance within the train sample, creating a greater difference in RMSE between the train and test sample.
+
+## Question 4.1
+
+```{r}
+set.seed(51) 
+cv_ridge <- cv.glmnet(X_train, y_train, alpha = 0, nfolds = 10)
+cv_ridge$lambda.min
+plot(cv_ridge)
+```
+
+a\) The optimal lambda value selected by cross-validation is 0.0138.
+
+b\) ?
+
+## Question 4.2
+
+```{r}
+prediction_test_ridge <- predict(cv_ridge, newx = X_test, s= "lambda.min")
+
+test_ridge_RMSE <- sqrt(mean((actual_test - prediction_test_ridge)^2))
+test_ridge_RMSE
+```
+
+## Question 4.3
+
+```{r}
+coef(cv_ridge, s = "lambda.min")
+ridge_coefs <- coef(cv_ridge, s = "lambda.min")
+ridge_nonzero <- rownames(ridge_coefs)[ridge_coefs[, 1] != 0]
+ridge_nonzero <- ridge_nonzero[ridge_nonzero != "(Intercept)"]
+ridge_nonzero
+```
+
+did not eliminate any variables bc that's what ridge does
+
+RIdge did not set any coefficients to zero.
+
+## Question 5.1
+
+```{r}
+set.seed(51) 
+cv_lasso <- cv.glmnet(X_train, y_train, alpha = 1, nfolds = 10)
+cv_lasso$lambda.min
+plot(cv_lasso)
+```
+
+a\) The optimal lambda is 0.007694.
+
+## Question 5.2
+
+```{r}
+lasso_coefs <- coef(cv_lasso, s = "lambda.min")
+lasso_nonzero <- rownames(lasso_coefs)[lasso_coefs[, 1] != 0]
+lasso_nonzero <- lasso_nonzero[lasso_nonzero != "(Intercept)"]
+
+lasso_coefs
+lasso_nonzero
+```
+
+a\) 27 variables survived and 114 were eliminated.
+
+b\) Some of the interaction terms make sense, but some do not. For example,
+
+age:age_25_45 does not make sense but black:juv_fel_count makes sense (being black makes juvenile felony count matter more.
+
+c\) you're not basing in theory but rather numerical?
+
+## Question 5.3
+
+```{r}
+prediction_test_lasso <- predict(cv_lasso, newx = X_test, s= "lambda.min")
+
+
+test_lasso_RMSE <- sqrt(mean((actual_test - prediction_test_lasso)^2))
+test_lasso_RMSE
+```
+
+The out of sample RMSE for lasso is 0.4593. how does it compare?
+
+## Question 6.1
+
+```{r}
+set.seed(51) 
+cv_elasticnet <- cv.glmnet(X_train, y_train, alpha = 0.5, nfolds = 10)
+
+prediction_test_elasticnet <- predict(cv_elasticnet, newx = X_test, s= "lambda.min")
+
+
+test_RMSE_elasticnet <- sqrt(mean((actual_test - prediction_test_elasticnet)^2))
+test_RMSE_elasticnet
+
+elasticnet_coefs <- coef(cv_elasticnet, s = "lambda.min")
+elasticnet_nonzero <- rownames(elasticnet_coefs)[elasticnet_coefs[, 1] != 0]
+elasticnet_nonzero <- elasticnet_nonzero[elasticnet_nonzero != "(Intercept)"]
+elasticnet_nonzero
+```
+
+The out-of-sample RMSE is 0.4583 and it retains 43 variables.
+
+## Question 6.2
+
+```{r}
+
+
+data.frame(
+  Variable = c("OLS (main effects)", "OLS (kitchen sink)", "Ridge", "LASSO", "Elastic Net"),
+  Predictors = c(ncol(compas) - 1,
+           196,
+           141,
+           27,
+           43),
+  Out_of_Sample_RMSE = c(test_RMSE_ols,
+    test_RMSE_ols_full,
+    test_ridge_RMSE,
+    test_lasso_RMSE,
+    test_RMSE_elasticnet))
+```
+
+## Question 6.3
+
+```{r}
+
+```
+
+## Question 6.4
+
+```{r}
+
+```
+
+## Question 6.5
 
 ```{r}
 
